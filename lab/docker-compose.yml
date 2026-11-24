@@ -1,0 +1,9 @@
+services:
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: websenti-juice-shop
+    ports:
+      - "127.0.0.1:3000:3000"
+    mem_limit: 1536m
+    cpus: 1.0
+    restart: "no"

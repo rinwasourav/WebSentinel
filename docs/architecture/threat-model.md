@@ -1,0 +1,3 @@
+# Initial threat model
+
+Assets: operator authorization, target scope, assessment evidence, local report/database contents, and user credentials. Threats include scope bypass, unsafe redirect, DNS rebinding to private infrastructure, credential leakage, malicious response content in reports, runaway requests, and inaccurate findings. Controls include exact allowlists, per-hop DNS/IP validation, authorization gate, disabled redirects, bounded request/rate/time settings, no raw body retention, evidence redaction, escaped HTML, and safety tests. Residual risk includes DNS changes between validation and connection, server-side effects from even GET requests, and scanner false positives; do not treat local isolation as target isolation.
