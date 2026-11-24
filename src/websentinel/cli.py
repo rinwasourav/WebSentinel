@@ -41,7 +41,14 @@ def main(argv: list[str] | None = None) -> int:
     assess.add_argument(
         "--local-lab",
         action="store_true",
-        help="Allow explicitly scoped private/loopback targets only in a local lab",
+        help="Allow loopback targets for an explicitly authorized local lab",
+    )
+    assess.add_argument(
+        "--lab-cidr",
+        action="append",
+        default=[],
+        metavar="CIDR",
+        help="Additional approved RFC1918/IPv6 ULA network; requires --local-lab",
     )
     assess.add_argument("--max-requests", type=int, default=10)
     assess.add_argument("--rate", type=float, default=1.0)
@@ -69,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.max_requests,
                 args.rate,
                 args.timeout,
+                lab_cidrs=frozenset(args.lab_cidr),
             )
             assessment = Assessment(args.target, tuple(sorted(policy.allowed_hosts)))
             response = PolicyHTTPClient(policy).get(args.target)

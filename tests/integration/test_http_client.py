@@ -131,7 +131,24 @@ def test_redirect_re_resolves_and_rejects_rebound_private_address(
         router.get("https://rebind.test/").mock(
             return_value=httpx.Response(302, headers={"location": "/next"})
         )
-        with pytest.raises(ScopeError, match="private"):
+        with pytest.raises(ScopeError, match="outside the allowed"):
             PolicyHTTPClient(policy).get("https://rebind.test/")
         assert len(router.calls) == 1
     assert hostname_lookups == 2
+
+
+def test_redirect_outside_approved_lab_cidr_is_blocked() -> None:
+    policy = ScopePolicy(
+        frozenset({"127.0.0.1", "192.168.1.7"}),
+        True,
+        local_lab=True,
+        requests_per_second=1000,
+        lab_cidrs=frozenset({"192.168.0.0/24"}),
+    )
+    with respx.mock(assert_all_called=True) as router:
+        router.get("http://127.0.0.1/").mock(
+            return_value=httpx.Response(302, headers={"location": "http://192.168.1.7/"})
+        )
+        with pytest.raises(ScopeError, match="network policy"):
+            PolicyHTTPClient(policy).get("http://127.0.0.1/")
+        assert len(router.calls) == 1

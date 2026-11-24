@@ -4,7 +4,7 @@ WebSentinel is a lightweight, open-source framework for **authorized passive web
 
 ## Safety model
 
-Every network assessment requires `--authorized`, an exact repeated `--scope` hostname allowlist, and an HTTP(S) URL. Wildcards, URL credentials, off-scope redirects, and non-global resolved addresses are denied by default. Loopback requires `--local-lab`. Each hostname is resolved and validated once per hop; the HTTP transport connects to a pinned approved IP and verifies the socket peer before sending the request, while retaining the original hostname for TLS SNI and certificate checks. Redirects are resolved and validated again. Requests use TLS verification, short timeouts, one request per second by default, and a hard request cap. Local process/container isolation does not prevent impact on a remote target server. Use a dedicated test environment and account for any authorized active work.
+Every network assessment requires `--authorized`, an exact repeated `--scope` hostname allowlist, and an HTTP(S) URL. Wildcards, URL credentials, off-scope redirects, and non-global resolved addresses are denied by default. `--local-lab` allows only IPv4/IPv6 loopback by default. Additional lab destinations require one or more explicit RFC1918/IPv6 ULA `--lab-cidr` values; link-local, metadata, reserved, and public destinations remain denied in local-lab mode. CIDRs never replace the exact host allowlist. Each hostname is resolved and validated once per hop; the HTTP transport connects to a pinned approved IP and verifies the socket peer before sending the request, while retaining the original hostname for TLS SNI and certificate checks. Redirects are resolved and validated against the same CIDR policy. Requests use TLS verification, short timeouts, one request per second by default, and a hard request cap. Local process/container isolation does not prevent impact on a remote target server. Use a dedicated test environment and account for any authorized active work.
 
 ## Install and run
 
@@ -24,6 +24,8 @@ cd lab && docker compose down
 ```
 
 The lab is optional and only starts during explicit commands. No Docker target was started as part of repository setup.
+
+For an intentionally isolated lab host on a private subnet, pass its narrowly scoped network explicitly, for example `--local-lab --lab-cidr 192.168.56.0/24`. Do not use broad home or office LAN ranges as lab CIDRs.
 
 ## Development checks
 
