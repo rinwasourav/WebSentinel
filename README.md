@@ -1,6 +1,6 @@
 # WebSentinel
 
-WebSentinel is a lightweight, open-source framework for **authorized passive web security assessments**. Version 0.1 implements one bounded HTTP GET, safe header/cookie/TLS observations, exact host scope checks, redacted evidence, SQLite persistence primitives, and escaped JSON/HTML reporting. It does not attempt exploitation, authentication, form submission, brute force, port scanning, or unrestricted crawling.
+WebSentinel is a lightweight, open-source framework for **authorized passive web security assessments**. Version 0.1 implements one bounded HTTP GET, safe header/cookie/TLS observations, exact host scope checks, redacted evidence, SQLite assessment history, a severity-confidence risk score, and escaped JSON/HTML/optional PDF reporting. It does not attempt exploitation, authentication, form submission, brute force, port scanning, or unrestricted crawling.
 
 ## Safety model
 
@@ -15,7 +15,7 @@ uv sync --all-extras
 uv run websentinel assess --target https://your-authorized-host.example --scope your-authorized-host.example --authorized
 ```
 
-Only assess systems for which you have explicit permission. Reports are written under `reports/` (ignored by Git). Example local lab:
+Only assess systems for which you have explicit permission. Reports are written under `reports/` (ignored by Git); pass `--pdf` to also create a PDF when the `pdf` extra is installed. Use `websentinel history` to list saved assessments. Example local lab:
 
 ```sh
 cd lab && docker compose up -d
@@ -33,7 +33,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 uv run bandit -r src/websentinel
-uv run pip-audit
+uv run pip-audit --skip-editable
 uv build
 ```
 
@@ -41,4 +41,4 @@ uv build
 
 `scope/` is the authorization and URL gate; `http/` owns all requests; `checks/` contains deterministic passive checks; `findings/` normalizes and redacts evidence; `storage/` provides transactional, versioned SQLite persistence; `reporting/` escapes untrusted HTML. `active/`, `inventory/`, and `runtime/` are reserved, disabled extension points. Future page inventory must remain same-origin, bounded, rate limited, and avoid state-changing paths. Future active/runtime workflows require distinct opt-in authorization and must disclose that isolation does not prevent target-server impact.
 
-OWASP references are contextual pointers, not proof that a finding maps to an entire category. Scanner observations can be false positives and are not a substitute for expert review. The implementation currently covers a baseline subset of HTTP security headers, cookie flags, a negotiated TLS protocol observation, and Server metadata. Certificate expiry/hostname verification is performed by the HTTP TLS stack; detailed certificate diagnostics and PDF output are follow-on work.
+OWASP references are contextual pointers, not proof that a finding maps to an entire category. Scanner observations can be false positives and are not a substitute for expert review. The implementation currently covers a baseline subset of HTTP security headers, cookie flags, a negotiated TLS protocol observation, and Server metadata. Certificate chain and hostname validation are enforced by the HTTP TLS stack; detailed certificate-expiry diagnostics remain follow-on work. PDF output is available through the optional ReportLab extra.
