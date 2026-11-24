@@ -4,7 +4,7 @@ WebSentinel is a lightweight, open-source framework for **authorized passive web
 
 ## Safety model
 
-Every network assessment requires `--authorized`, an exact repeated `--scope` hostname allowlist, and an HTTP(S) URL. Wildcards, URL credentials, off-scope redirects, and non-global resolved addresses are denied by default. Loopback requires `--local-lab`. Requests use TLS verification, short timeouts, one request per second by default, a hard request cap, and manual redirect validation. Local process/container isolation does not prevent impact on a remote target server. Use a dedicated test environment and account for any authorized active work.
+Every network assessment requires `--authorized`, an exact repeated `--scope` hostname allowlist, and an HTTP(S) URL. Wildcards, URL credentials, off-scope redirects, and non-global resolved addresses are denied by default. Loopback requires `--local-lab`. Each hostname is resolved and validated once per hop; the HTTP transport connects to a pinned approved IP and verifies the socket peer before sending the request, while retaining the original hostname for TLS SNI and certificate checks. Redirects are resolved and validated again. Requests use TLS verification, short timeouts, one request per second by default, and a hard request cap. Local process/container isolation does not prevent impact on a remote target server. Use a dedicated test environment and account for any authorized active work.
 
 ## Install and run
 

@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from websentinel.scope.guard import ScopePolicy, validate_url
+from websentinel.http.transport import PinnedHTTPTransport
+from websentinel.scope.guard import ScopePolicy, resolve_target
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +38,8 @@ class PolicyHTTPClient:
 
     def get(self, url: str) -> SafeResponse:
         """Fetch response metadata using bounded GET and validated redirects."""
-        current = validate_url(url, self.policy)
+        target = resolve_target(url, self.policy)
+        current = target.url
         started = time.monotonic()
         for redirect_count in range(self.policy.max_redirects + 1):
             if self._requests >= self.policy.max_requests:
@@ -49,7 +51,10 @@ class PolicyHTTPClient:
             self._last_request = time.monotonic()
             redirect_url: str | None = None
             with httpx.Client(
-                timeout=self.policy.timeout, follow_redirects=False, verify=True, trust_env=False
+                transport=PinnedHTTPTransport(target),
+                timeout=self.policy.timeout,
+                follow_redirects=False,
+                trust_env=False,
             ) as client:
                 with client.stream(
                     "GET", current, headers={"User-Agent": self.user_agent}, follow_redirects=False
@@ -84,6 +89,7 @@ class PolicyHTTPClient:
                             tls,
                         )
             if redirect_url is not None:
-                current = validate_url(redirect_url, self.policy)
+                target = resolve_target(redirect_url, self.policy)
+                current = target.url
                 continue
         raise RuntimeError("Redirect policy exhausted")

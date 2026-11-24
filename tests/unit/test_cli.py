@@ -20,8 +20,6 @@ def test_unauthorized_cli_stops_before_network(capsys: object) -> None:
 def test_http_timeout_is_reported_as_clean_failure(monkeypatch: object, tmp_path: object) -> None:
     from websentinel import cli
 
-    monkeypatch.setattr(cli, "validate_url", lambda target, policy: target)
-
     def timeout(self: object, url: str) -> object:
         raise httpx.ReadTimeout("request timed out")
 

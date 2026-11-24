@@ -19,7 +19,7 @@ from websentinel.findings.normalize import redact
 from websentinel.http.client import PolicyHTTPClient
 from websentinel.models import Assessment
 from websentinel.reporting.render import write_html, write_json, write_pdf
-from websentinel.scope.guard import ScopeError, ScopePolicy, validate_url
+from websentinel.scope.guard import ScopeError, ScopePolicy
 from websentinel.storage.sqlite import AssessmentStore
 
 
@@ -70,9 +70,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.rate,
                 args.timeout,
             )
-            target = validate_url(args.target, policy)
-            assessment = Assessment(target, tuple(sorted(policy.allowed_hosts)))
-            response = PolicyHTTPClient(policy).get(target)
+            assessment = Assessment(args.target, tuple(sorted(policy.allowed_hosts)))
+            response = PolicyHTTPClient(policy).get(args.target)
+            assessment.target = response.url
             assessment.checks_executed.append("passive-baseline")
             assessment.findings.extend(inspect_response(response))
             AssessmentStore(args.database).save(assessment)

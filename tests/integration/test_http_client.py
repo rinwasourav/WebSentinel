@@ -65,3 +65,73 @@ def test_redirect_to_private_ip_is_blocked(monkeypatch: pytest.MonkeyPatch) -> N
         )
         with pytest.raises(ScopeError, match="local-lab"):
             PolicyHTTPClient(policy).get("https://public.test/")
+
+
+def test_connection_uses_validated_ip_instead_of_resolving_hostname_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    original_getaddrinfo = socket.getaddrinfo
+    hostname_lookups: list[str] = []
+
+    def getaddrinfo(
+        host: str, port: int, *args: object, **kwargs: object
+    ) -> list[tuple[object, ...]]:
+        if host == "pinned.test":
+            hostname_lookups.append(host)
+            return original_getaddrinfo("127.0.0.1", port, *args, **kwargs)  # type: ignore[arg-type]
+        return original_getaddrinfo(host, port, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    try:
+        policy = ScopePolicy(
+            frozenset({"pinned.test"}), True, local_lab=True, requests_per_second=1000
+        )
+        response = PolicyHTTPClient(policy).get(f"http://pinned.test:{server.server_address[1]}/")
+        assert response.status_code == 204
+        assert hostname_lookups == ["pinned.test"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=2)
+
+
+def test_redirect_re_resolves_and_rejects_rebound_private_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_getaddrinfo = socket.getaddrinfo
+    hostname_lookups = 0
+
+    def rebinding_getaddrinfo(
+        host: str, port: int, *args: object, **kwargs: object
+    ) -> list[tuple[object, ...]]:
+        nonlocal hostname_lookups
+        if host == "rebind.test":
+            hostname_lookups += 1
+            address = "93.184.216.34" if hostname_lookups == 1 else "10.0.0.8"
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))]
+        return original_getaddrinfo(host, port, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", rebinding_getaddrinfo)
+    policy = ScopePolicy(frozenset({"rebind.test"}), True, requests_per_second=1000)
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://rebind.test/").mock(
+            return_value=httpx.Response(302, headers={"location": "/next"})
+        )
+        with pytest.raises(ScopeError, match="private"):
+            PolicyHTTPClient(policy).get("https://rebind.test/")
+        assert len(router.calls) == 1
+    assert hostname_lookups == 2

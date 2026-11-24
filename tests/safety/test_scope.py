@@ -68,6 +68,16 @@ def test_private_ip_requires_local_lab_opt_in() -> None:
         validate_url("http://10.0.0.4", policy, resolve=False)
 
 
+def test_international_hostname_allowlist_is_normalized() -> None:
+    policy = ScopePolicy(frozenset({"bücher.example"}), authorized=True)
+    assert validate_url("https://xn--bcher-kva.example/", policy, resolve=False)
+
+
+def test_port_zero_is_rejected() -> None:
+    with pytest.raises(ScopeError, match="Port zero"):
+        validate_url("http://example.test:0", policy(), resolve=False)
+
+
 def test_dns_private_resolution_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         socket,
