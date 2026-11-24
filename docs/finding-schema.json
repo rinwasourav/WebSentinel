@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rinwasourav/WebSentinel/blob/main/docs/finding-schema.json",
+  "title": "WebSentinel assessment report",
+  "type": "object",
+  "required": ["id", "target", "scope", "started_at", "tool_version", "checks_executed", "checks_failed", "findings", "inventory", "coverage", "limitations", "configuration", "duration_seconds"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "target": {"type": "string"},
+    "scope": {"type": "array", "items": {"type": "string"}},
+    "started_at": {"type": "string", "format": "date-time"},
+    "tool_version": {"type": "string"},
+    "checks_executed": {"type": "array", "items": {"type": "string"}},
+    "checks_failed": {"type": "array", "items": {"type": "string"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "inventory": {"type": "array", "items": {"$ref": "#/$defs/page"}},
+    "coverage": {"type": "object"},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "configuration": {"type": "object"},
+    "duration_seconds": {"type": "number", "minimum": 0}
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["id", "check_id", "title", "description", "severity", "confidence", "evidence", "impact", "remediation", "url", "priority", "detected_at", "kind"],
+      "properties": {
+        "id": {"type": "string"}, "check_id": {"type": "string"},
+        "title": {"type": "string"}, "description": {"type": "string"},
+        "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "evidence": {"type": "string"}, "impact": {"type": "string"},
+        "remediation": {"type": "string"}, "url": {"type": "string"},
+        "owasp": {"type": "array", "items": {"type": "string"}},
+        "references": {"type": "array", "items": {"type": "string"}},
+        "priority": {"type": "number"}, "detected_at": {"type": "string", "format": "date-time"},
+        "kind": {"enum": ["finding", "observation", "inconclusive", "error"]},
+        "cwe": {"type": ["string", "null"]}
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["url", "depth", "status", "checks_run", "checks_failed", "finding_ids", "requests"],
+      "properties": {
+        "url": {"type": "string"}, "depth": {"type": "integer", "minimum": 0},
+        "status": {"enum": ["assessed", "partial", "inaccessible", "skipped"]},
+        "checks_run": {"type": "array", "items": {"type": "string"}},
+        "checks_failed": {"type": "array", "items": {"type": "string"}},
+        "finding_ids": {"type": "array", "items": {"type": "string"}},
+        "requests": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

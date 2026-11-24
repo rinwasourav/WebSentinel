@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ssl
 from http.cookies import CookieError, SimpleCookie
+from time import time
 
 from websentinel.http.client import SafeResponse
 from websentinel.models import Confidence, Finding, Severity
@@ -77,6 +79,37 @@ def inspect_response(response: SafeResponse) -> list[Finding]:
                     ("A05:2021",),
                 )
             )
+    for header, title, guidance in (
+        (
+            "cross-origin-resource-policy",
+            "Cross-Origin Resource Policy was not observed",
+            "Consider an appropriate Cross-Origin-Resource-Policy for resources served here.",
+        ),
+        (
+            "cross-origin-opener-policy",
+            "Cross-Origin Opener Policy was not observed",
+            "Consider Cross-Origin-Opener-Policy if opener isolation is needed.",
+        ),
+        (
+            "cross-origin-embedder-policy",
+            "Cross-Origin Embedder Policy was not observed",
+            "Consider Cross-Origin-Embedder-Policy when cross-origin isolation is required.",
+        ),
+    ):
+        if header not in headers:
+            findings.append(
+                Finding(
+                    f"headers.{header}",
+                    title,
+                    "Optional cross-origin isolation policy was not observed.",
+                    Severity.INFO,
+                    Confidence.HIGH,
+                    f"{header} was not present; applicability depends on the application.",
+                    "Cross-origin isolation policies can reduce certain cross-origin data risks.",
+                    guidance,
+                    response.url,
+                )
+            )
     if response.url.lower().startswith("https://") and "strict-transport-security" not in headers:
         findings.append(
             Finding(
@@ -92,6 +125,32 @@ def inspect_response(response: SafeResponse) -> list[Finding]:
                 ("A05:2021",),
             )
         )
+    elif response.url.lower().startswith("https://"):
+        try:
+            max_age = next(
+                int(part.strip().split("=", 1)[1])
+                for part in headers["strict-transport-security"].split(";")
+                if part.strip().lower().startswith("max-age=")
+            )
+        except (KeyError, StopIteration, ValueError):
+            max_age = None
+        if max_age is not None and max_age < 15_552_000:
+            findings.append(
+                Finding(
+                    "headers.hsts_max_age",
+                    "HSTS max-age is shorter than six months",
+                    "The observed HSTS lifetime is below the commonly recommended "
+                    "six-month period.",
+                    Severity.LOW,
+                    Confidence.HIGH,
+                    f"Observed max-age: {max_age} seconds.",
+                    "A short lifetime reduces the period in which browsers remember "
+                    "HTTPS-only policy.",
+                    "Choose a max-age appropriate to operational recovery and security "
+                    "requirements.",
+                    response.url,
+                )
+            )
     if "server" in headers:
         findings.append(
             Finding(
@@ -161,7 +220,67 @@ def inspect_response(response: SafeResponse) -> list[Finding]:
                         ("A07:2021",),
                     )
                 )
+            if name.startswith(("__Host-", "__Secure-")):
+                invalid_prefix = not morsel["secure"] or (
+                    name.startswith("__Host-") and (morsel["path"] != "/" or bool(morsel["domain"]))
+                )
+                if invalid_prefix:
+                    findings.append(
+                        Finding(
+                            "cookies.prefix",
+                            f"{base} does not satisfy its cookie prefix requirements",
+                            "The cookie name uses a security prefix but its attributes do not "
+                            "satisfy the browser prefix contract.",
+                            Severity.MEDIUM,
+                            Confidence.HIGH,
+                            f"{base} prefix requirements are not satisfied; value redacted.",
+                            "Browsers may ignore the intended prefix protection.",
+                            "Set Secure; __Host- cookies also require Path=/ and no Domain "
+                            "attribute.",
+                            response.url,
+                            ("A05:2021",),
+                        )
+                    )
+            if name.lower() in {"session", "sessionid", "sid", "phpsessid"} and (
+                morsel["expires"] or morsel["max-age"]
+            ):
+                findings.append(
+                    Finding(
+                        "cookies.session_persistence",
+                        f"{base} appears to be a persistent session cookie",
+                        "A session-like cookie includes an explicit persistence attribute; "
+                        "intent cannot be inferred passively.",
+                        Severity.INFO,
+                        Confidence.LOW,
+                        f"{base} has an Expires or Max-Age attribute; value redacted.",
+                        "Persistent authentication state can increase exposure if a device is "
+                        "shared or lost.",
+                        "Confirm that session persistence is intentional and appropriately "
+                        "bounded.",
+                        response.url,
+                    )
+                )
     if response.url.lower().startswith("https://") and response.tls:
+        not_after = response.tls.get("not_after")
+        if not_after:
+            try:
+                seconds_remaining = ssl.cert_time_to_seconds(not_after) - time()
+            except (ValueError, OverflowError):
+                seconds_remaining = None
+            if seconds_remaining is not None and 0 <= seconds_remaining < 30 * 24 * 60 * 60:
+                findings.append(
+                    Finding(
+                        "tls.certificate_expiry",
+                        "TLS certificate expires within 30 days",
+                        "The verified peer certificate is nearing its expiry date.",
+                        Severity.LOW,
+                        Confidence.HIGH,
+                        f"Certificate notAfter: {not_after}.",
+                        "An expired certificate can interrupt service and browser trust.",
+                        "Renew and deploy the certificate before its expiry date.",
+                        response.url,
+                    )
+                )
         if response.tls.get("version") in {"TLSv1", "TLSv1.1", "SSLv3"}:
             findings.append(
                 Finding(

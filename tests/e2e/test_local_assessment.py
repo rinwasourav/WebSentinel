@@ -10,7 +10,11 @@ from websentinel.cli import main
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        body = b"<html><title>Local fixture</title></html>"
+        body = (
+            b'<html><a href="/child">child</a></html>'
+            if self.path == "/"
+            else b"<html><title>Local child</title></html>"
+        )
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.send_header("Set-Cookie", "session=fixture-secret; HttpOnly")
@@ -37,6 +41,7 @@ def test_end_to_end_local_lab_scan(tmp_path: Path) -> None:
                 "127.0.0.1",
                 "--authorized",
                 "--local-lab",
+                "--crawl",
                 "--rate",
                 "100",
                 "--output",
@@ -50,6 +55,8 @@ def test_end_to_end_local_lab_scan(tmp_path: Path) -> None:
         assert len(report_files) == 1
         report = json.loads(report_files[0].read_text())
         assert any(item["check_id"] == "headers.csp" for item in report["findings"])
+        assert report["coverage"]["pages_assessed"] == 2
+        assert len(report["inventory"]) == 2
         assert "fixture-secret" not in report_files[0].read_text()
         assert (tmp_path / "history.sqlite3").exists()
         assert main(["history", "--database", str(tmp_path / "history.sqlite3")]) == 0

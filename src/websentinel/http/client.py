@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import httpx
 
 from websentinel.http.transport import PinnedHTTPTransport
-from websentinel.scope.guard import ScopePolicy, resolve_target
+from websentinel.scope.guard import ScopeError, ScopePolicy, resolve_target
 
 
 @dataclass(frozen=True, slots=True)
 class SafeResponse:
-    """Only response metadata needed by passive checks; never holds a body."""
+    """Sanitized response metadata and an optional capped HTML body."""
 
     url: str
     status_code: int
@@ -21,6 +22,8 @@ class SafeResponse:
     cookies: tuple[str, ...]
     elapsed_seconds: float
     tls: dict[str, str]
+    body: bytes = b""
+    body_truncated: bool = False
 
 
 class PolicyHTTPClient:
@@ -36,9 +39,23 @@ class PolicyHTTPClient:
         self._requests = 0
         self._last_request = 0.0
 
-    def get(self, url: str) -> SafeResponse:
-        """Fetch response metadata using bounded GET and validated redirects."""
+    @property
+    def request_count(self) -> int:
+        """Return the total number of HTTP requests including redirects."""
+        return self._requests
+
+    @property
+    def requests_remaining(self) -> int:
+        """Return the remaining policy request budget."""
+        return max(0, self.policy.max_requests - self._requests)
+
+    def get(self, url: str, *, max_body_bytes: int = 0, same_origin: bool = False) -> SafeResponse:
+        """Fetch bounded response metadata and optionally a capped HTML body."""
+        if max_body_bytes < 0:
+            raise ValueError("max_body_bytes cannot be negative")
         target = resolve_target(url, self.policy)
+        parsed_start = urlsplit(target.url)
+        expected_origin = (parsed_start.scheme, target.host, target.port)
         current = target.url
         started = time.monotonic()
         for redirect_count in range(self.policy.max_redirects + 1):
@@ -50,6 +67,9 @@ class PolicyHTTPClient:
             self._requests += 1
             self._last_request = time.monotonic()
             redirect_url: str | None = None
+            request_headers = {"User-Agent": self.user_agent}
+            if max_body_bytes:
+                request_headers["Accept-Encoding"] = "identity"
             with httpx.Client(
                 transport=PinnedHTTPTransport(target),
                 timeout=self.policy.timeout,
@@ -57,7 +77,7 @@ class PolicyHTTPClient:
                 trust_env=False,
             ) as client:
                 with client.stream(
-                    "GET", current, headers={"User-Agent": self.user_agent}, follow_redirects=False
+                    "GET", current, headers=request_headers, follow_redirects=False
                 ) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("location")
@@ -66,6 +86,31 @@ class PolicyHTTPClient:
                         redirect_url = str(response.url.join(location))
                     else:
                         cookie_headers = tuple(response.headers.get_list("set-cookie"))
+                        body = b""
+                        body_truncated = False
+                        content_type = response.headers.get("content-type", "").lower()
+                        is_html = content_type.startswith(("text/html", "application/xhtml+xml"))
+                        if max_body_bytes and is_html:
+                            encoding = response.headers.get("content-encoding", "identity").lower()
+                            content_length = response.headers.get("content-length")
+                            can_read = encoding in {"", "identity"}
+                            if encoding not in {"", "identity"}:
+                                body_truncated = True
+                            elif content_length is not None:
+                                try:
+                                    body_truncated = int(content_length) > max_body_bytes
+                                except ValueError:
+                                    pass
+                            if can_read:
+                                collected = bytearray()
+                                for chunk in response.iter_raw(chunk_size=16 * 1024):
+                                    remaining = max_body_bytes - len(collected)
+                                    if len(chunk) > remaining:
+                                        collected.extend(chunk[:remaining])
+                                        body_truncated = True
+                                        break
+                                    collected.extend(chunk)
+                                body = bytes(collected)
                         tls: dict[str, str] = {}
                         stream = response.extensions.get("network_stream")
                         if stream is not None:
@@ -87,9 +132,23 @@ class PolicyHTTPClient:
                             cookie_headers,
                             time.monotonic() - started,
                             tls,
+                            body,
+                            body_truncated,
                         )
             if redirect_url is not None:
-                target = resolve_target(redirect_url, self.policy)
+                redirected_target = resolve_target(redirect_url, self.policy)
+                parsed_redirect = urlsplit(redirected_target.url)
+                if (
+                    same_origin
+                    and (
+                        parsed_redirect.scheme,
+                        redirected_target.host,
+                        redirected_target.port,
+                    )
+                    != expected_origin
+                ):
+                    raise ScopeError("Crawler redirect is outside its same-origin boundary")
+                target = redirected_target
                 current = target.url
                 continue
         raise RuntimeError("Redirect policy exhausted")

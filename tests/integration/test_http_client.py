@@ -44,6 +44,38 @@ def test_redirect_leaving_scope_is_blocked(monkeypatch: pytest.MonkeyPatch) -> N
         assert len(router.calls) == 1
 
 
+def test_crawler_redirect_cannot_cross_origin_inside_broad_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _public_dns(monkeypatch)
+    policy = ScopePolicy(frozenset({"public.test", "other.test"}), True, requests_per_second=1000)
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://public.test/").mock(
+            return_value=httpx.Response(302, headers={"location": "https://other.test/"})
+        )
+        with pytest.raises(ScopeError, match="same-origin"):
+            PolicyHTTPClient(policy).get("https://public.test/", same_origin=True)
+        assert len(router.calls) == 1
+
+
+def test_html_body_is_capped_and_default_request_does_not_read_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _public_dns(monkeypatch)
+    policy = ScopePolicy(frozenset({"public.test"}), True, requests_per_second=1000)
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://public.test/").mock(
+            return_value=httpx.Response(
+                200, headers={"content-type": "text/html"}, content=b"abcdefgh"
+            )
+        )
+        client = PolicyHTTPClient(policy)
+        assert client.get("https://public.test/").body == b""
+        capped = client.get("https://public.test/", max_body_bytes=4)
+    assert capped.body == b"abcd"
+    assert capped.body_truncated
+
+
 def test_request_cap_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
     _public_dns(monkeypatch)
     policy = ScopePolicy(frozenset({"public.test"}), True, max_requests=1, requests_per_second=1000)

@@ -1,5 +1,5 @@
 # Security policy
 
-WebSentinel is pre-release (0.1.x); no release is currently guaranteed supported. Report vulnerabilities privately to the repository owner through GitHub's private vulnerability reporting when enabled. Do not include credentials or live target data in reports.
+WebSentinel is pre-release; no release is currently guaranteed supported. Report vulnerabilities privately to the repository owner through GitHub's private vulnerability reporting when enabled. Do not include credentials or live target data in reports. Keep all dependencies up to date and review CI dependency audit results before publishing a release.
 
 WebSentinel is intended only for systems with explicit authorization. The passive MVP does not exploit vulnerabilities, guess credentials, submit forms, or perform unrestricted crawling. Local-lab mode permits loopback by default; extra private ranges require explicit RFC1918/IPv6 ULA CIDRs. Link-local, cloud metadata, reserved, and public destinations remain denied in local-lab mode. Its scope and IP protections reduce accidental requests but cannot guarantee zero impact or eliminate every network-routing risk. Local isolation does not isolate a target server. Reports may contain sensitive target metadata; store and share them carefully.

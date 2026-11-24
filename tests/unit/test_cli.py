@@ -17,6 +17,12 @@ def test_unauthorized_cli_stops_before_network(capsys: object) -> None:
     assert code == 2
 
 
+def test_checks_list_reports_registered_passive_check(capsys: object) -> None:
+    assert main(["checks", "list"]) == 0
+    output = capsys.readouterr().out
+    assert "passive-baseline" in output
+
+
 def test_http_timeout_is_reported_as_clean_failure(monkeypatch: object, tmp_path: object) -> None:
     from websentinel import cli
 

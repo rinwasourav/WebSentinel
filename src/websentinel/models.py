@@ -43,6 +43,9 @@ class Finding:
     references: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
     id: str = ""
+    detected_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    cwe: str | None = None
+    kind: str = "finding"
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -52,6 +55,8 @@ class Finding:
                 f"{self.check_id}|{self.url}|{self.title}".encode()
             ).hexdigest()[:16]
             object.__setattr__(self, "id", digest)
+        if self.severity is Severity.INFO and self.kind == "finding":
+            object.__setattr__(self, "kind", "observation")
 
 
 @dataclass(slots=True)
@@ -66,6 +71,11 @@ class Assessment:
     checks_failed: list[str] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
     id: str = ""
+    inventory: list[dict[str, Any]] = field(default_factory=list)
+    coverage: dict[str, Any] = field(default_factory=dict)
+    limitations: list[str] = field(default_factory=list)
+    configuration: dict[str, Any] = field(default_factory=dict)
+    duration_seconds: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.id:
